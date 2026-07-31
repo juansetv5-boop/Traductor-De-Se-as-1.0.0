@@ -58,7 +58,8 @@ from src.model_trainer import ModelTrainer
 class AsyncTTSEngine:
     """
     Motor de síntesis de voz (TTS) asíncrono no bloqueante con soporte robusto
-    para Windows SAPI5 / pyttsx3 y selección forzada de voz en español.
+    para Windows SAPI5 / pyttsx3. Instancia y destruye el motor por demanda en
+    cada frase para garantizar reproducciones continuas e infinitas.
     """
 
     def __init__(self, rate: int = TTS_RATE) -> None:
@@ -80,20 +81,43 @@ class AsyncTTSEngine:
     def _speech_worker(self) -> None:
         """
         Bucle worker ejecutado en hilo secundario.
-        Inicializa COM en Windows y configura la voz en español.
+        Procesa elementos de la cola instanciando y destruyendo pyttsx3 por cada frase.
         """
         if pyttsx3 is None:
-            print("[TTS ALERTA] pyttsx3 no esta instalado. TTS desactivado.")
+            print("[TTS ALERTA] pyttsx3 no está instalado. TTS desactivado.")
             return
 
-        # Inicialización de COM en Windows para evitar silencios / bloqueos SAPI5
+        print("[TTS INFO] Motor de voz asíncrono inicializado (Re-inicialización por demanda activa).")
+
+        while self._is_running:
+            try:
+                text: Optional[str] = self._speech_queue.get(timeout=0.2)
+                if text is None:
+                    break
+
+                clean_text: str = text.strip()
+                if clean_text:
+                    self._play_text(clean_text)
+
+                self._speech_queue.task_done()
+
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"[ERROR TTS Worker] Excepción durante reproducción: {e}")
+
+    def _play_text(self, text: str) -> None:
+        """
+        Inicializa COM en Windows, crea una instancia limpia de pyttsx3, busca voz en español,
+        reproduce el texto y libera el objeto COM de forma segura.
+        """
         if pythoncom is not None:
             try:
                 pythoncom.CoInitialize()
-                print("[TTS DIAGNÓSTICO] COM CoInitialize() ejecutado correctamente.")
-            except Exception as e:
-                print(f"[TTS AVISO] CoInitialize() aviso: {e}")
+            except Exception:
+                pass
 
+        engine = None
         try:
             engine = pyttsx3.init()
             engine.setProperty("rate", self.rate)
@@ -101,8 +125,6 @@ class AsyncTTSEngine:
             # Buscar y seleccionar explícitamente una voz en español
             voices = engine.getProperty("voices")
             spanish_voice = None
-
-            print(f"[TTS DIAGNÓSTICO] Voces encontradas en el sistema: {len(voices)}")
 
             for voice in voices:
                 v_name: str = voice.name.lower()
@@ -118,42 +140,27 @@ class AsyncTTSEngine:
 
             if spanish_voice is not None:
                 engine.setProperty("voice", spanish_voice.id)
-                print(f"[TTS ÉXITO] Voz en español configurada: '{spanish_voice.name}' (ID: {spanish_voice.id})")
-            else:
-                current_voice = engine.getProperty("voice")
-                print(f"[TTS AVISO] No se detectó voz explícita en español. Usando voz por defecto: '{current_voice}'")
+
+            print(f"\n[TTS REPRODUCIENDO] 🔊 '{text}'")
+            engine.say(text)
+            engine.runAndWait()
+            print(f"[TTS COMPLETADO] Pronunciación de '{text}' finalizada.")
 
         except Exception as e:
-            print(f"[ERROR CRÍTICO TTS] Fallo al inicializar pyttsx3: {e}")
-            return
+            print(f"[ERROR TTS] Fallo al reproducir texto: {e}")
+        finally:
+            if engine is not None:
+                try:
+                    engine.stop()
+                except Exception:
+                    pass
+                del engine
 
-        print("[TTS INFO] Motor de voz secundario listo y a la escucha.")
-
-        while self._is_running:
-            try:
-                text: Optional[str] = self._speech_queue.get(timeout=0.2)
-                if text is None:
-                    break
-
-                clean_text: str = text.strip()
-                if clean_text:
-                    print(f"\n[TTS REPRODUCIENDO] 🔊 '{clean_text}'")
-                    engine.say(clean_text)
-                    engine.runAndWait()
-                    print(f"[TTS COMPLETADO] Pronunciación de '{clean_text}' finalizada.")
-
-                self._speech_queue.task_done()
-
-            except queue.Empty:
-                continue
-            except Exception as e:
-                print(f"[ERROR TTS Worker] Excepción durante reproducción: {e}")
-
-        if pythoncom is not None:
-            try:
-                pythoncom.CoUninitialize()
-            except Exception:
-                pass
+            if pythoncom is not None:
+                try:
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
     def speak(self, text: str) -> None:
         """Encola un texto para reproducción en voz alta sin bloquear la UI."""
@@ -165,6 +172,7 @@ class AsyncTTSEngine:
         """Detiene el hilo worker de TTS."""
         self._is_running = False
         self._speech_queue.put(None)
+
 
 
 class SignInferenceEngine:
