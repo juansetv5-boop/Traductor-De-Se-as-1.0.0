@@ -1,0 +1,59 @@
+{
+    "fecha_entrenamiento": "2026-07-30T22:41:56.925512",
+    "accuracy_global": 0.9973,
+    "accuracy_porcentaje": "99.73%",
+    "muestras_totales": 1857,
+    "clases_entrenadas": [
+        "A",
+        "B",
+        "H",
+        "L",
+        "O"
+    ],
+    "num_clases": 5,
+    "reporte_detallado": {
+        "A": {
+            "precision": 0.9878048780487805,
+            "recall": 1.0,
+            "f1-score": 0.9938650306748467,
+            "support": 81.0
+        },
+        "B": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 70.0
+        },
+        "H": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 80.0
+        },
+        "L": {
+            "precision": 1.0,
+            "recall": 0.9857142857142858,
+            "f1-score": 0.9928057553956835,
+            "support": 70.0
+        },
+        "O": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1-score": 1.0,
+            "support": 71.0
+        },
+        "accuracy": 0.9973118279569892,
+        "macro avg": {
+            "precision": 0.9975609756097562,
+            "recall": 0.9971428571428571,
+            "f1-score": 0.9973341572141059,
+            "support": 372.0
+        },
+        "weighted avg": {
+            "precision": 0.9973446105428796,
+            "recall": 0.9973118279569892,
+            "f1-score": 0.9973104041998936,
+            "support": 372.0
+        }
+    }
+}
