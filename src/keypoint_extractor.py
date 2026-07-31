@@ -87,19 +87,26 @@ class KeypointExtractor:
         frame_rgb.flags.writeable = True
         return results
 
-    def extract(self, frame_bgr: NDArray[np.uint8]) -> Optional[NDArray[np.float64]]:
+    def extract(
+        self,
+        frame_bgr: NDArray[np.uint8],
+        auto_flip_left_hand: bool = True,
+    ) -> Optional[NDArray[np.float64]]:
         """
         Extrae y normaliza los keypoints 3D de la primera mano detectada.
 
         Pipeline completo:
-            1. Procesar frame con MediaPipe → obtener landmarks crudos.
+            1. Procesar frame con MediaPipe → obtener landmarks crudos y handedness.
             2. Convertir 21 landmarks a array (21, 3).
-            3. Centrar: restar coordenadas de Landmark 0 (muñeca) a todos los puntos.
-            4. Escalar: dividir por el valor absoluto máximo del vector centrado.
-            5. Aplanar a vector 1D de 63 elementos.
+            3. Invariancia Zurda/Diestra: Si la mano es izquierda y auto_flip_left_hand es True,
+               se invierte el eje X para mapearla al espacio vectorial de mano derecha.
+            4. Centrar: restar coordenadas de Landmark 0 (muñeca) a todos los puntos.
+            5. Escalar: dividir por el valor absoluto máximo del vector centrado.
+            6. Aplanar a vector 1D de 63 elementos.
 
         Args:
             frame_bgr: Frame en formato BGR (numpy array H×W×3, uint8).
+            auto_flip_left_hand: Invertir eje X para manos izquierdas.
 
         Returns:
             Vector numpy de 63 floats normalizados en [-1, 1], o None si no
@@ -128,6 +135,13 @@ class KeypointExtractor:
         # Paso 2: Centrado — restar coordenadas de la muñeca (Landmark 0)
         wrist: NDArray[np.float64] = raw_coords[0]
         centered: NDArray[np.float64] = raw_coords - wrist
+
+        # Paso 3: Invariancia Zurda/Diestra (Flipping eje X para manos izquierdas)
+        if auto_flip_left_hand and results.multi_handedness:
+            handedness_label: str = results.multi_handedness[0].classification[0].label
+            if handedness_label == "Left":
+                centered[:, 0] = -centered[:, 0]
+
 
         # Paso 3: Escalado — dividir por la magnitud absoluta máxima
         max_abs: np.float64 = np.max(np.abs(centered))
