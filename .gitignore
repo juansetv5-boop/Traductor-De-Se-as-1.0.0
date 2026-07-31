@@ -34,3 +34,21 @@ temp/
 
 # Archivos temporales de Antigravity / Gemini
 .gemini/
+# ------------------------------------------------------------
+# v1.0.1 - Ignorar artefactos pesados y temporales específicos
+# Modelos entrenados y archivos binarios de gran tamaño
+models/*.pkl
+models/*.h5
+
+# Datasets temporales y CSVs de recolección
+data/*.csv
+data/tmp/
+
+# Caché y archivos generados por TTS
+tts_cache/
+*.wav
+*.mp3
+
+# Logs y salidas de pruebas automatizadas
+tests/logs/
+*.log
