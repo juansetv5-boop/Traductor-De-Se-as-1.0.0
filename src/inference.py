@@ -308,6 +308,11 @@ def draw_inference_hud(
 
     cv2.putText(annotated, label_str, (15, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     cv2.putText(annotated, conf_str, (220, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, color_conf, 2)
+    # Use the global CAMERA_INDEX from the module
+    import sys
+    current_cam = sys.modules[__name__].CAMERA_INDEX if hasattr(sys.modules[__name__], 'CAMERA_INDEX') else 0
+    
+    cv2.putText(annotated, f"CAM: {current_cam} ('}}' para alternar)", (w - 380, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 150), 1)
     cv2.putText(annotated, f"FPS: {fps:.1f}", (w - 110, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1)
 
     # 3. Barra Debounce
@@ -489,12 +494,20 @@ def main() -> None:
     debounce = DebounceBuffer(required_frames=15)
     tts_engine = AsyncTTSEngine(rate=TTS_RATE)
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
     if not cap.isOpened():
-        print(f"[ERROR] No se pudo abrir la cámara en el índice {CAMERA_INDEX}.")
+        print(f"[ERROR] No se pudo abrir la cámara (índice {CAMERA_INDEX}, backend CAP_DSHOW). Verifica CAMERA_INDEX en config.py.")
+        sys.exit(1)
+
+    # Validación inmediata del primer frame antes de entrar al bucle
+    first_ret, first_frame = cap.read()
+    if not first_ret or first_frame is None:
+        cap.release()
+        print(f"[ERROR] No se pudo leer el primer frame de la cámara (índice {CAMERA_INDEX}, backend CAP_DSHOW).")
+        print("[DIAGNÓSTICO] Asegúrate de que otra aplicación no esté bloqueando la cámara o prueba con CAMERA_INDEX = 1.")
         sys.exit(1)
 
     accumulated_text: str = ""
@@ -521,7 +534,7 @@ def main() -> None:
             frame: NDArray[np.uint8]
             ret, frame = cap.read()
 
-            if not ret:
+            if not ret or frame is None:
                 print("[ERROR] No se pudo capturar fotograma de la cámara.")
                 break
 
@@ -695,10 +708,29 @@ def main() -> None:
                         inactivity_start_time = time.time() if accumulated_text else None
                         print(f"\n[TECLA BORRAR] → Texto actual: '{accumulated_text}'")
 
-                # 4. Salir con 'Q', ESC (27) o '}' (125)
-                elif key in (ord("q"), ord("Q"), 27, ord("}")):
+                # 4. Salir con 'Q', ESC (27)
+                elif key in (ord("q"), ord("Q"), 27):
                     print("\n[INFO] Saliendo del sistema de inferencia...")
                     break
+                    
+                # 5. Hot-Swap de cámara con '}'
+                elif key == ord("}"):
+                    print("\n[HOT-SWAP] Cambiando de cámara...")
+                    cap.release()
+                    global CAMERA_INDEX
+                    CAMERA_INDEX += 1
+                    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+                    test_ret, _ = cap.read()
+                    if not test_ret:
+                        print(f"[HOT-SWAP] Cámara {CAMERA_INDEX} no disponible. Volviendo a 0.")
+                        CAMERA_INDEX = 0
+                        cap.release()
+                        cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+                        cap.read()
 
     finally:
         cap.release()

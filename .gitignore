@@ -52,3 +52,10 @@ tts_cache/
 # Logs y salidas de pruebas automatizadas
 tests/logs/
 *.log
+dataset/
+dataset_test/
+models/*.pth
+models/*.pt
+*.npz
+*.mp4
+data/*.pt

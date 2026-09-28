@@ -112,25 +112,68 @@ python -m src.inference
 - `BACKSPACE` / `C`: Borrar último carácter.
 - `Q` / `ESC` / `}`: Salir de la aplicación.
 
+### Modo Dinámico: Gestos Continuos LSC en GPU (TCN + Apex Trigger)
+
+Para señas dinámicas completas que involucran trayectoria temporal, manos y cuerpo (ej. *Hola, Gracias, Por favor, Ayuda, Buenos días*):
+
+#### Paso 5: Recolección de Secuencias de Video Continuas
+Graba clips de video respetando el protocolo anti-data leakage (organización por sujetos):
+```bash
+python src/data_collection/video_collector.py
+```
+
+#### Paso 6: Generación de Dataset Temporal y Cinemático
+Extrae ventanas temporales de $T=40$ frames y calcula derivadas cinemáticas ($dX, d^2X$):
+```bash
+# Con dataset real de videos:
+python src/data_collection/dataset_generator.py
+
+# O generar dataset sintético de prueba inmediata:
+python src/data_collection/dataset_generator.py --synthetic
+```
+
+#### Paso 7: Entrenamiento de la Red TCN (PyTorch / GPU)
+Entrena la red convolucional temporal causal con Focal Loss y exportación a TorchScript:
+```bash
+python src/training/train_dynamic.py --epochs 25
+```
+
+#### Paso 8: Traducción Continua en Vivo con Apex TTS
+Inicia el motor de inferencia en tiempo real con detección del ápice cinemático y síntesis de voz sin retraso perceptual:
+```bash
+python src/live_inference/live_engine.py
+```
+
+#### Paso 9: Perfilado de Latencia Sub-5ms
+Mide la latencia de inferencia en GPU (CUDA) y CPU:
+```bash
+python tests/benchmark_latency.py
+```
+
 ---
 
-## 📐 Fundamento Matemático de Normalización
+## 📐 Fundamento Matemático de Cinemática Temporal
 
-Dado un conjunto de 21 coordenadas 3D detectadas por MediaPipe $\mathbf{P} = \{\mathbf{p}_0, \mathbf{p}_1, \dots, \mathbf{p}_{20}\}$ donde cada $\mathbf{p}_i = (x_i, y_i, z_i)$:
+Para un gesto dinámico continuo, se analiza una ventana de tiempo $T=40$ fotogramas a 30 FPS (~1.33 s):
 
-1. **Traslación (Centrado en la muñeca):**
-   $$\mathbf{p}'_i = \mathbf{p}_i - \mathbf{p}_0 \quad \forall i \in \{0, \dots, 20\}$$
-   donde $\mathbf{p}'_0 = (0, 0, 0)$.
+1. **Vector Espacial Normalizado por Frame:**
+   - Pose superior (7 puntos: hombros, codos, muñecas, nariz) centrada respecto al punto medio entre hombros y escalada por el ancho bi-acromial.
+   - Manos (21 puntos cada una) normalizadas en modo wrist-relative y escaladas por la dimensión de la palma.
+   - Vector espacial resultante: $\mathbf{P}_t \in \mathbb{R}^{147}$.
 
-2. **Escalado (Invariancia de escala y distancia):**
-   $$S = \max_{i, c} |\mathbf{p}'_{i, c}| \quad \text{donde } c \in \{x, y, z\}$$
-   $$\mathbf{\hat{p}}_i = \frac{\mathbf{p}'_i}{S}$$
+2. **Diferenciales Temporales (Velocidad y Aceleración):**
+   - Velocidad vectorial: $\mathbf{V}_t = \mathbf{P}_t - \mathbf{P}_{t-1} \in \mathbb{R}^{147}$
+   - Aceleración vectorial: $\mathbf{A}_t = \mathbf{V}_t - \mathbf{V}_{t-1} \in \mathbb{R}^{147}$
+   - Tensor de características por frame: $\mathbf{F}_t = [\mathbf{P}_t, \mathbf{V}_t, \mathbf{A}_t] \in \mathbb{R}^{441}$.
+   - Entrada para Convolución Temporal 1D: $\mathbf{X} \in \mathbb{R}^{\text{Batch} \times 441 \times 40}$.
 
-3. **Vectorización:**
-   $$\mathbf{V} = [\mathbf{\hat{p}}_0, \mathbf{\hat{p}}_1, \dots, \mathbf{\hat{p}}_{20}] \in \mathbb{R}^{63}$$
+3. **Detección del Apex (Disparador TTS sin retardo ciego):**
+   - La velocidad de la muñeca $v(t) = \|\mathbf{p}_{\text{wrist}}(t) - \mathbf{p}_{\text{wrist}}(t-1)\|$ se monitorea en tiempo real.
+   - El evento de traducción se dispara exactamente en el mínimo local de velocidad post-pico ($v(t) \le \alpha \cdot v_{\max}$ con $\alpha=0.40$), sincronizando la síntesis de voz en el momento natural en que el usuario finaliza la seña.
 
 ---
 
 ## 📜 Licencia
 
 Desarrollado bajo licencia MIT. Libre para uso educativo e investigación.
+

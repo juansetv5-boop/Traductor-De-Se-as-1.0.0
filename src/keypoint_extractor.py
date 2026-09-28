@@ -215,12 +215,20 @@ def _run_verification() -> None:
     """
     extractor = KeypointExtractor()
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
     if not cap.isOpened():
-        print("[ERROR] No se pudo abrir la cámara. Verifica CAMERA_INDEX en config.py.")
+        print(f"[ERROR] No se pudo abrir la camara (indice {CAMERA_INDEX}, backend CAP_DSHOW). Verifica CAMERA_INDEX en config.py.")
+        sys.exit(1)
+
+    # Validacion inmediata del primer frame antes de entrar al bucle
+    first_ret, first_frame = cap.read()
+    if not first_ret or first_frame is None:
+        cap.release()
+        print(f"[ERROR] No se pudo leer el primer frame de la camara (indice {CAMERA_INDEX}, backend CAP_DSHOW).")
+        print("[DIAGNOSTICO] Asegurate de que otra aplicacion no este bloqueando la camara o prueba con CAMERA_INDEX = 1.")
         sys.exit(1)
 
     print("=" * 70)
@@ -236,7 +244,7 @@ def _run_verification() -> None:
             frame: NDArray[np.uint8]
             ret, frame = cap.read()
 
-            if not ret:
+            if not ret or frame is None:
                 print("[ERROR] No se pudo leer frame de la cámara.")
                 break
 
@@ -266,6 +274,12 @@ def _run_verification() -> None:
             cv2.putText(
                 annotated, f"FPS: {fps:.1f}",
                 (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2,
+            )
+            import sys
+            current_cam = sys.modules[__name__].CAMERA_INDEX if hasattr(sys.modules[__name__], 'CAMERA_INDEX') else 0
+            cv2.putText(
+                annotated, f"CAM: {current_cam} ('}}' alternar)",
+                (CAMERA_WIDTH - 220, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 150), 2,
             )
 
             if keypoints is not None:
@@ -302,8 +316,26 @@ def _run_verification() -> None:
             cv2.imshow("Traductor Alpha - Verificacion Fase 1", annotated)
 
             # Salir con 'Q'
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
                 break
+            elif key == ord("}"):
+                print("\n[HOT-SWAP] Cambiando de cámara...")
+                cap.release()
+                global CAMERA_INDEX
+                CAMERA_INDEX += 1
+                cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+                test_ret, _ = cap.read()
+                if not test_ret:
+                    print(f"[HOT-SWAP] Cámara {CAMERA_INDEX} no disponible. Volviendo a 0.")
+                    CAMERA_INDEX = 0
+                    cap.release()
+                    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+                    cap.read()
 
     finally:
         cap.release()
